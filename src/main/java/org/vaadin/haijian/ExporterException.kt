@@ -1,11 +1,6 @@
-package org.vaadin.haijian;
+package org.vaadin.haijian
 
-class ExporterException extends RuntimeException {
-    ExporterException(String message) {
-        super(message);
-    }
-
-    ExporterException(String message, Exception e) {
-        super(message, e);
-    }
+internal class ExporterException : RuntimeException {
+    constructor(message: String) : super(message)
+    constructor(message: String, e: Exception) : super(message, e)
 }

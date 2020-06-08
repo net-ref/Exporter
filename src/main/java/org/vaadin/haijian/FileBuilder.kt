@@ -1,220 +1,193 @@
-package org.vaadin.haijian;
+package org.vaadin.haijian
 
-import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.data.binder.BeanPropertySet;
-import com.vaadin.flow.data.binder.PropertyDefinition;
-import com.vaadin.flow.data.binder.PropertySet;
-import com.vaadin.flow.data.provider.DataCommunicator;
-import com.vaadin.flow.data.provider.DataProvider;
-import com.vaadin.flow.data.provider.Query;
-import com.vaadin.flow.data.provider.hierarchy.HierarchicalDataProvider;
-import com.vaadin.flow.data.provider.hierarchy.HierarchicalQuery;
+import com.vaadin.flow.component.grid.Grid
+import com.vaadin.flow.data.binder.BeanPropertySet
+import com.vaadin.flow.data.binder.PropertySet
+import com.vaadin.flow.data.provider.DataCommunicator
+import com.vaadin.flow.data.provider.DataProvider
+import com.vaadin.flow.data.provider.Query
+import com.vaadin.flow.data.provider.hierarchy.HierarchicalDataProvider
+import com.vaadin.flow.data.provider.hierarchy.HierarchicalQuery
+import org.slf4j.LoggerFactory
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStream
+import java.util.function.Consumer
+import java.util.stream.Collectors
+import java.util.stream.Stream
 
-import org.slf4j.LoggerFactory;
+abstract class FileBuilder<T: Any> internal constructor(private val grid: Grid<T>, private val columnHeaders: Map<Grid.Column<T>, String>?) {
+    lateinit var file: File
+    private var propertySet: PropertySet<T>? = null
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Collection;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+    private var columns: Collection<Grid.Column<T>>
+    protected val numberOfColumns: Int
+        get() = columns.size
 
-public abstract class FileBuilder<T> {
-    private static final String TMP_FILE_NAME = "tmp";
+    abstract val fileExtension: String
 
-    File file;
-    private Grid<T> grid;
-    private Map<Grid.Column<T>, String> columnHeaders;
-    private Collection<Grid.Column> columns;
-    private PropertySet<T> propertySet;
+    init {
+        columns = grid.columns.stream().filter { column: Grid.Column<T> -> isExportable(column) }.collect(Collectors.toList())
 
-    @SuppressWarnings("unchecked")
-    FileBuilder(Grid<T> grid, Map<Grid.Column<T>, String> columnHeaders) {
-        this.grid = grid;
-        this.columnHeaders = columnHeaders;
-        columns = grid.getColumns().stream().filter(this::isExportable).collect(Collectors.toList());
         try {
-            Field field = Grid.class.getDeclaredField("propertySet");
-            field.setAccessible(true);
-            Object propertySetRaw = field.get(grid);
+            val field = Grid::class.java.getDeclaredField("propertySet")
+            field.isAccessible = true
+            val propertySetRaw = field[grid]
             if (propertySetRaw != null) {
-                propertySet = (PropertySet<T>) propertySetRaw;
+                propertySet = propertySetRaw as PropertySet<T>
             }
-        } catch (Exception e) {
-            throw new ExporterException("couldn't read propertyset information from grid", e);
+        } catch (e: Exception) {
+            throw ExporterException("couldn't read propertyset information from grid", e)
         }
+
         if (columns.isEmpty()) {
-            throw new ExporterException("No exportable column found, did you remember to set property name as the key for column");
+            throw ExporterException("No exportable column found, did you remember to set property name as the key for column")
         }
     }
 
-    private boolean isExportable(Grid.Column<T> column) {
-        return column.isVisible() && column.getKey() != null && !column.getKey().isEmpty()
-                && (propertySet == null || propertySet.getProperty(column.getKey()).isPresent());
+    private fun isExportable(column: Grid.Column<T>): Boolean {
+        return (column.isVisible && column.key != null && column.key.isNotEmpty()
+                && (propertySet == null || propertySet?.getProperty(column.key)?.isPresent == true))
     }
 
-    InputStream build() {
-        try {
-            initTempFile();
-            resetContent();
-            buildFileContent();
-            writeToFile();
-            return new FileInputStream(file);
-        } catch (Exception e) {
-            throw new ExporterException("An error happened during exporting your Grid", e);
+    fun build(): InputStream {
+        return try {
+            initTempFile()
+            resetContent()
+            buildFileContent()
+            writeToFile()
+            FileInputStream(file)
+        } catch (e: Exception) {
+            throw ExporterException("An error happened during exporting your Grid", e)
         }
     }
 
-    private void initTempFile() throws IOException {
-        if (file == null || file.delete()) {
-            file = createTempFile();
-        }
-    }
-
-    private void buildFileContent() {
-        buildHeaderRow();
-        buildRows();
-        buildFooter();
-    }
-
-    protected void resetContent() {
-
-    }
-
-    private void buildHeaderRow() {
-      onNewRow();
-      if (columnHeaders == null) {
-        columns.forEach(column -> {
-            String key = column.getKey();
-            if (key != null) {
-                onNewCell();
-                buildColumnHeaderCell(key);
-            } else {
-                LoggerFactory.getLogger(this.getClass()).warn(String.format("Column key %s is a property which cannot be found", column.getKey()));
-            }
-        });
-      } else {
-        columns.forEach(column -> { 
-          String columnHeader = columnHeaders.get(column);
-          if (columnHeader != null) {
-            onNewCell();
-            buildColumnHeaderCell(columnHeader);
-          } else {
-              LoggerFactory.getLogger(this.getClass()).warn(String.format("Column with key %s have not column header value defined in map", column.getKey()));
-          }
-        });
-    }
-  }
-
-
-    void buildColumnHeaderCell(String header) {
-
-    }
-
-    @SuppressWarnings("unchecked")
-    private void buildRows() {
-        Object filter = null;
-        try {
-            Method method = DataCommunicator.class.getDeclaredMethod("getFilter");
-            method.setAccessible(true);
-            filter = method.invoke(grid.getDataCommunicator());
-        } catch (Exception e) {
-            LoggerFactory.getLogger(this.getClass()).error("Unable to get filter from DataCommunicator");
+    private fun initTempFile() {
+        file = File(TMP_FILE_NAME, fileExtension)
+        if (file.exists()) {
+            file.delete()
         }
 
-        DataProvider<T, ?> dataProvider = grid.getDataProvider();
-        Query<T, ?> streamQuery;
-        Stream<T> dataStream;
+        file = File.createTempFile(TMP_FILE_NAME, fileExtension)
+    }
 
-        if (!(dataProvider instanceof HierarchicalDataProvider)) {
-            streamQuery = new Query<>(
-                    0,
-                    dataProvider.size(new Query(filter)),
-                    grid.getDataCommunicator().getBackEndSorting(),
-                    grid.getDataCommunicator().getInMemorySorting(),
-                    null
-            );
+    private fun buildFileContent() {
+        buildHeaderRow()
+        buildRows()
+        buildFooter()
+    }
 
-            dataStream = getDataStream(streamQuery);
-            dataStream.forEach(item -> { buildRow(item, true);});
+    protected open fun resetContent() {}
+    private fun buildHeaderRow() {
+        onNewRow()
+        if (columnHeaders == null) {
+            columns.forEach(Consumer { column: Grid.Column<*> ->
+                val key = column.key
+                if (key != null) {
+                    onNewCell()
+                    buildColumnHeaderCell(key)
+                } else {
+                    LoggerFactory.getLogger(this.javaClass).warn(String.format("Column key %s is a property which cannot be found", column.key))
+                }
+            })
         } else {
-            HierarchicalDataProvider<T, ?> hierarchicalDataProvider = (HierarchicalDataProvider<T, ?>) dataProvider;
-            hierarchicalDataProvider.fetch(new HierarchicalQuery(filter, null)).forEach(parent -> {
-                buildRow((T)parent, true);
-                hierarchicalDataProvider.fetch(new HierarchicalQuery(null, (T)parent)).forEach(child -> {
-                    onNewRow();
-                    addEmptyCell();
-                    buildRow((T)child, false);
-                });
-            });
+            columns.forEach(Consumer { column: Grid.Column<*> ->
+                val columnHeader = columnHeaders[column]
+                if (columnHeader != null) {
+                    onNewCell()
+                    buildColumnHeaderCell(columnHeader)
+                } else {
+                    LoggerFactory.getLogger(this.javaClass).warn(String.format("Column with key %s have not column header value defined in map", column.key))
+                }
+            })
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private void buildRow(T item, boolean addNewRow) {
-        if (addNewRow) {
-            onNewRow();
-        }
-        if (propertySet == null) {
-            propertySet = (PropertySet<T>) BeanPropertySet.get(item.getClass());
-            columns = columns.stream().filter(this::isExportable).collect(Collectors.toList());
+    @Suppress("UNCHECKED_CAST")
+    private fun buildRows() {
+        var filter: Any? = null
+
+        try {
+            val method = DataCommunicator::class.java.getDeclaredMethod("getFilter")
+            method.isAccessible = true
+            filter = method.invoke(grid.dataCommunicator)
+        } catch (e: Exception) {
+            LoggerFactory.getLogger(this.javaClass).error("Unable to get filter from DataCommunicator")
         }
 
-        columns.forEach(column -> {
-            Optional<PropertyDefinition<T, ?>> propertyDefinition = propertySet.getProperty(column.getKey());
-            if (propertyDefinition.isPresent()) {
-                onNewCell();
-                buildCell(propertyDefinition.get().getGetter().apply(item));
-            } else {
-                throw new ExporterException("Column key: " + column.getKey() + " is a property which cannot be found");
+        val streamQuery: Query<T, *>
+        val dataStream: Stream<T>
+
+        if (grid.dataProvider !is HierarchicalDataProvider<T, *>) {
+            val dataProvider = grid.dataProvider as DataProvider<T, Any>
+            streamQuery = Query<T, Any>(
+                    0,
+                    dataProvider.size(Query(filter)),
+                    grid.dataCommunicator.backEndSorting,
+                    grid.dataCommunicator.inMemorySorting,
+                    null
+            )
+            dataStream = getDataStream(streamQuery)
+            dataStream.forEach { item: T -> buildRow(item, true) }
+        } else {
+            val dataProvider = grid.dataProvider as HierarchicalDataProvider<T, Any>
+            dataProvider.fetch(HierarchicalQuery<T, Any>(filter, null)).forEach { parent: T ->
+                buildRow(parent, true)
+                dataProvider.fetch(HierarchicalQuery<T, Any>(null, parent)).forEach { child: T ->
+                    onNewRow()
+                    addEmptyCell()
+                    buildRow(child, false)
+                }
             }
-        });
-    }
-
-    void onNewRow() {
-
-    }
-
-    void onNewCell() {
-
-    }
-
-    abstract void addEmptyCell();
-
-    abstract void buildCell(Object value);
-
-    void buildFooter() {
-
-    }
-
-    abstract String getFileExtension();
-
-    private File createTempFile() throws IOException {
-        return File.createTempFile(TMP_FILE_NAME, getFileExtension());
-    }
-
-    abstract void writeToFile();
-
-    int getNumberOfColumns() {
-        return columns.size();
-    }
-
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private Stream<T> getDataStream(Query newQuery) {
-        Stream<T> stream = grid.getDataProvider().fetch(newQuery);
-        if (stream.isParallel()) {
-            LoggerFactory.getLogger(DataCommunicator.class)
-                    .debug("Data provider {} has returned "
-                                    + "parallel stream on 'fetch' call",
-                            grid.getDataProvider().getClass());
-            stream = stream.collect(Collectors.toList()).stream();
-            assert !stream.isParallel();
         }
-        return stream;
+    }
+
+    private fun buildRow(item: T, addNewRow: Boolean) {
+        if (addNewRow) {
+            onNewRow()
+        }
+
+        if (propertySet == null) {
+            propertySet = BeanPropertySet.get(item::class.java) as PropertySet<T>
+            columns = columns.stream().filter { column: Grid.Column<T> -> isExportable(column) }.collect(Collectors.toList())
+        }
+
+        columns.forEach(Consumer { column: Grid.Column<*> ->
+            val propertyDefinition = propertySet!!.getProperty(column.key)
+            if (propertyDefinition.isPresent) {
+                onNewCell()
+                buildCell(propertyDefinition.get().getter.apply(item))
+            } else {
+                throw ExporterException("Column key: " + column.key + " is a property which cannot be found")
+            }
+        })
+    }
+
+    open fun buildColumnHeaderCell(header: String) {}
+    open fun onNewRow() {}
+    open fun onNewCell() {}
+    open fun buildFooter() {}
+
+    abstract fun addEmptyCell()
+    abstract fun buildCell(value: Any?)
+
+    abstract fun writeToFile()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun getDataStream(newQuery: Query<T, Any>): Stream<T> {
+        var stream = (grid.dataProvider as DataProvider<T, Any>).fetch(newQuery)
+        if (stream.isParallel) {
+            LoggerFactory.getLogger(DataCommunicator::class.java)
+                    .debug("Data provider {} has returned "
+                            + "parallel stream on 'fetch' call",
+                            grid.dataProvider.javaClass)
+            stream = stream.collect(Collectors.toList()).stream()
+            assert(!stream.isParallel)
+        }
+        return stream
+    }
+
+    companion object {
+        private const val TMP_FILE_NAME = "tmp"
     }
 }

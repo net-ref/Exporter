@@ -1,116 +1,110 @@
-package org.vaadin.haijian;
+package org.vaadin.haijian
 
-import com.vaadin.flow.component.grid.Grid;
-import org.apache.poi.hssf.usermodel.HSSFWorkbook;
-import org.apache.poi.ss.usermodel.*;
-import org.slf4j.LoggerFactory;
+import com.vaadin.flow.component.grid.Grid
+import org.apache.poi.hssf.usermodel.HSSFWorkbook
+import org.apache.poi.ss.usermodel.Cell
+import org.apache.poi.ss.usermodel.CellStyle
+import org.apache.poi.ss.usermodel.Font
+import org.apache.poi.ss.usermodel.Row
+import org.apache.poi.ss.usermodel.Sheet
+import org.apache.poi.ss.usermodel.Workbook
+import org.slf4j.LoggerFactory
+import java.io.FileOutputStream
+import java.util.*
 
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.Calendar;
-import java.util.Map;
+class ExcelFileBuilder<T: Any> internal constructor(grid: Grid<T>, columnHeaders: Map<Grid.Column<T>, String>?) : FileBuilder<T>(grid, columnHeaders) {
+    override val fileExtension: String
+        get() = ".xls"
 
-public class ExcelFileBuilder<T> extends FileBuilder<T> {
-    private static final String EXCEL_FILE_EXTENSION = ".xls";
+    private lateinit var workbook: Workbook
+    private lateinit var sheet: Sheet
 
-    private Workbook workbook;
-    private Sheet sheet;
-    private int rowNr;
-    private int colNr;
-    private Row row;
-    private Cell cell;
-    private CellStyle boldStyle;
+    private var row: Row? = null
+    private var cell: Cell? = null
 
-    ExcelFileBuilder(Grid<T> grid, Map<Grid.Column<T>, String> columnHeaders) {
-        super(grid, columnHeaders);
-    }
+    private var boldStyle: CellStyle? = null
 
-    @Override
-    public String getFileExtension() {
-        return EXCEL_FILE_EXTENSION;
-    }
+    private var rowNr = 0
+    private var colNr = 0
 
-    @Override
-    protected void writeToFile() {
+
+    override fun writeToFile() {
         try {
-            workbook.write(new FileOutputStream(file));
-        } catch (Exception e) {
-            LoggerFactory.getLogger(this.getClass()).error("Error writing excel file", e);
+            workbook.write(FileOutputStream(file))
+        } catch (e: Exception) {
+            LoggerFactory.getLogger(this.javaClass).error("Error writing excel file", e)
         }
     }
 
-    @Override
-    protected void onNewRow() {
-        row = sheet.createRow(rowNr);
-        rowNr++;
-        colNr = 0;
+    override fun onNewRow() {
+        row = sheet.createRow(rowNr)
+        rowNr++
+        colNr = 0
     }
 
-    @Override
-    protected void onNewCell() {
-        cell = row.createCell(colNr);
-        colNr++;
+    override fun onNewCell() {
+        cell = row?.createCell(colNr)
+        colNr++
     }
 
-    @Override
-    protected void addEmptyCell() {
-        onNewCell();
-
-        cell.setCellType(Cell.CELL_TYPE_BLANK);
+    override fun addEmptyCell() {
+        onNewCell()
+        cell?.cellType = Cell.CELL_TYPE_BLANK
     }
 
-    @Override
-    protected void buildCell(Object value) {
-        if (value == null) {
-            cell.setCellType(Cell.CELL_TYPE_BLANK);
-        } else if (value instanceof Boolean) {
-            cell.setCellValue((Boolean) value);
-            cell.setCellType(Cell.CELL_TYPE_BOOLEAN);
-        } else if (value instanceof Calendar) {
-            Calendar calendar = (Calendar) value;
-            cell.setCellValue(calendar.getTime());
-            cell.setCellType(Cell.CELL_TYPE_STRING);
-        } else if (value instanceof Double) {
-            cell.setCellValue((Double) value);
-            cell.setCellType(Cell.CELL_TYPE_NUMERIC);
-        } else {
-            cell.setCellValue(value.toString());
-            cell.setCellType(Cell.CELL_TYPE_STRING);
+    override fun buildCell(value: Any?) {
+        when (value) {
+            null -> {
+                cell?.cellType = Cell.CELL_TYPE_BLANK
+            }
+            is Boolean -> {
+                cell?.setCellValue((value))
+                cell?.cellType = Cell.CELL_TYPE_BOOLEAN
+            }
+            is Calendar -> {
+                cell?.setCellValue(value.time)
+                cell?.cellType = Cell.CELL_TYPE_STRING
+            }
+            is Double -> {
+                cell?.setCellValue((value))
+                cell?.cellType = Cell.CELL_TYPE_NUMERIC
+            }
+            else -> {
+                cell?.setCellValue(value.toString())
+                cell?.cellType = Cell.CELL_TYPE_STRING
+            }
         }
     }
 
-    @Override
-    protected void buildColumnHeaderCell(String header) {
-        buildCell(header);
-        cell.setCellStyle(getBoldStyle());
+    override fun buildColumnHeaderCell(header: String) {
+        buildCell(header)
+        cell?.cellStyle = getBoldStyle()
     }
 
-    private CellStyle getBoldStyle() {
+    private fun getBoldStyle(): CellStyle? {
         if (boldStyle == null) {
-            Font bold = workbook.createFont();
-            bold.setBoldweight(Font.BOLDWEIGHT_BOLD);
-
-            boldStyle = workbook.createCellStyle();
-            boldStyle.setFont(bold);
+            val bold = workbook.createFont()
+            bold.boldweight = Font.BOLDWEIGHT_BOLD
+            boldStyle = workbook.createCellStyle()
+            boldStyle?.setFont(bold)
         }
-        return boldStyle;
+
+        return boldStyle
     }
 
-    @Override
-    protected void buildFooter() {
-        for (int i = 0; i < getNumberOfColumns(); i++) {
-            sheet.autoSizeColumn(i);
+    override fun buildFooter() {
+        for (i in 0 until numberOfColumns) {
+            sheet.autoSizeColumn(i)
         }
     }
 
-    @Override
-    protected void resetContent() {
-        workbook = new HSSFWorkbook();
-        sheet = workbook.createSheet();
-        colNr = 0;
-        rowNr = 0;
-        row = null;
-        cell = null;
-        boldStyle = null;
+    override fun resetContent() {
+        workbook = HSSFWorkbook()
+        sheet = workbook.createSheet()
+        colNr = 0
+        rowNr = 0
+        row = null
+        cell = null
+        boldStyle = null
     }
 }
