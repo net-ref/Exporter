@@ -7,10 +7,14 @@ import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.treegrid.TreeGrid;
 import com.vaadin.flow.data.provider.CallbackDataProvider;
 import com.vaadin.flow.data.provider.ConfigurableFilterDataProvider;
 import com.vaadin.flow.data.provider.DataProvider;
 import com.vaadin.flow.data.provider.ListDataProvider;
+import com.vaadin.flow.data.provider.hierarchy.HierarchicalDataProvider;
+import com.vaadin.flow.data.provider.hierarchy.TreeData;
+import com.vaadin.flow.data.provider.hierarchy.TreeDataProvider;
 import com.vaadin.flow.data.renderer.LocalDateRenderer;
 import com.vaadin.flow.server.StreamResource;
 import org.vaadin.haijian.Exporter;
@@ -33,6 +37,8 @@ public class GridDemoViewCreator {
 
     private static Component createGridDemo(boolean lazyLoading) {
         VerticalLayout result = new VerticalLayout();
+        result.setSizeFull();
+
         final List<AgeGroup> groups = new ArrayList<>();
         groups.add(new AgeGroup(0, 18));
         groups.add(new AgeGroup(19, 26));
@@ -44,13 +50,13 @@ public class GridDemoViewCreator {
 
         final Grid<Person> grid = new Grid<>();
         grid.setPageSize(10);
-        result.setHorizontalComponentAlignment(FlexComponent.Alignment.STRETCH, grid);
         grid.addColumn(Person::getName).setHeader("Name").setKey("name").setSortProperty("name");
         grid.addColumn(Person::getEmail).setHeader("Email").setKey("email");
         grid.addColumn(Person::getAge).setHeader("Age").setKey("age");
         grid.addColumn(new LocalDateRenderer<>(Person::getBirthday)).setHeader("Birthday").setKey("birthday");
 
         result.add(grid);
+        result.setHorizontalComponentAlignment(FlexComponent.Alignment.STRETCH, grid);
 
         if(lazyLoading){
             setupLazyLoadingDataProviderForGrid(grid, filter);
@@ -58,13 +64,34 @@ public class GridDemoViewCreator {
             setupListDataProviderForGrid(grid, filter);
         }
 
-        Anchor downloadAsExcel = new Anchor(new StreamResource("my-excel.xls", Exporter.exportAsExcel(grid)), "Download As Excel");
-        Anchor downloadAsCSV = new Anchor(new StreamResource("my-csv.csv", Exporter.exportAsCSV(grid)), "Download As CSV");
+        Anchor downloadAsExcel = new Anchor(new StreamResource("my-excel.xls", Exporter.exportAsExcel(grid, null)), "Download As Excel");
+        Anchor downloadAsCSV = new Anchor(new StreamResource("my-csv.csv", Exporter.exportAsCSV(grid, null)), "Download As CSV");
         result.add(new HorizontalLayout(downloadAsExcel, downloadAsCSV));
 
         return result;
     }
 
+    public static Component createTreeGridDemo() {
+        VerticalLayout result = new VerticalLayout();
+        result.setSizeFull();
+
+        TreeGrid<Person> grid = new TreeGrid<>();
+        grid.addHierarchyColumn(Person::getName).setHeader("Name").setKey("name").setSortProperty("name");
+        grid.addColumn(Person::getEmail).setHeader("Email").setKey("email");
+        grid.addColumn(Person::getAge).setHeader("Age").setKey("age");
+        grid.addColumn(new LocalDateRenderer<>(Person::getBirthday)).setHeader("Birthday").setKey("birthday");
+
+        result.add(grid);
+        result.setHorizontalComponentAlignment(FlexComponent.Alignment.STRETCH, grid);
+
+        setupTreeDataProviderForGrid(grid);
+
+        Anchor downloadAsExcel = new Anchor(new StreamResource("my-excel.xls", Exporter.exportAsExcel(grid, null)), "Download As Excel");
+        Anchor downloadAsCSV = new Anchor(new StreamResource("my-csv.csv", Exporter.exportAsCSV(grid, null)), "Download As CSV");
+        result.add(new HorizontalLayout(downloadAsExcel, downloadAsCSV));
+
+        return result;
+    }
     private static void setupListDataProviderForGrid(Grid<Person> grid, ComboBox<AgeGroup> filter) {
         ListDataProvider<Person> listDataProvider = DataProvider.fromStream(service.getPersons(0, 100, null, Collections.emptyList()));
         grid.setDataProvider(listDataProvider);
@@ -88,5 +115,21 @@ public class GridDemoViewCreator {
             final AgeGroup value = e.getValue();
             filterProvider.setFilter(value);
         });
+    }
+
+    private static void setupTreeDataProviderForGrid(TreeGrid<Person> grid) {
+        TreeData<Person> data = new TreeData<>();
+        data.addRootItems(service.getPersons(0, 20, null, Collections.emptyList()));
+
+        int index = 20;
+        for (Person root : data.getRootItems()) {
+            data.addItems(root, service.findUsers(index, index + 5));
+
+            index += 5;
+        }
+
+        TreeDataProvider<Person> treeDataProvider = new TreeDataProvider<>(data);
+        grid.setDataProvider(treeDataProvider);
+
     }
 }

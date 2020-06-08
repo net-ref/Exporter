@@ -28,6 +28,15 @@ public class CSVFileBuilder<T> extends FileBuilder<T> {
     }
 
     @Override
+    protected void addEmptyCell() {
+        try {
+            writer.append(",");
+        } catch (IOException e) {
+            LoggerFactory.getLogger(this.getClass()).error("Error building empty cell ", e);
+        }
+    }
+
+    @Override
     protected void buildCell(Object value) {
         try {
             if(value == null){

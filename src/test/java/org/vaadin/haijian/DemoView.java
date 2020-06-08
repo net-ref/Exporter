@@ -12,6 +12,8 @@ public class DemoView extends HorizontalLayout {
 
     public DemoView() {
         setWidth("100%");
+        setHeight("100%");
+
         VerticalLayout withNormalGrid = new VerticalLayout();
         expand(withNormalGrid);
         withNormalGrid.add(new Span("Grid With List data provider"));
@@ -20,8 +22,8 @@ public class DemoView extends HorizontalLayout {
 
         VerticalLayout withLazyLoadingGrid = new VerticalLayout();
         expand(withLazyLoadingGrid);
-        Component lazyGrid = GridDemoViewCreator.createGridWithLazyLoadingDemo();
-        withLazyLoadingGrid.add(new Span("Grid with Lazy loading data provider"));
+        Component lazyGrid = GridDemoViewCreator.createTreeGridDemo();
+        withLazyLoadingGrid.add(new Span("Tree Grid with Tree DataProvider"));
         withLazyLoadingGrid.add(lazyGrid);
         add(withNormalGrid, withLazyLoadingGrid);
     }

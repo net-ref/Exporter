@@ -5,7 +5,11 @@ import com.vaadin.flow.data.binder.BeanPropertySet;
 import com.vaadin.flow.data.binder.PropertyDefinition;
 import com.vaadin.flow.data.binder.PropertySet;
 import com.vaadin.flow.data.provider.DataCommunicator;
+import com.vaadin.flow.data.provider.DataProvider;
 import com.vaadin.flow.data.provider.Query;
+import com.vaadin.flow.data.provider.hierarchy.HierarchicalDataProvider;
+import com.vaadin.flow.data.provider.hierarchy.HierarchicalQuery;
+
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
@@ -86,10 +90,10 @@ public abstract class FileBuilder<T> {
       onNewRow();
       if (columnHeaders == null) {
         columns.forEach(column -> {
-            Optional<PropertyDefinition<T, ?>> propertyDefinition = propertySet.getProperty(column.getKey());
-            if (propertyDefinition.isPresent()) {
+            String key = column.getKey();
+            if (key != null) {
                 onNewCell();
-                buildColumnHeaderCell(propertyDefinition.get().getCaption());
+                buildColumnHeaderCell(key);
             } else {
                 LoggerFactory.getLogger(this.getClass()).warn(String.format("Column key %s is a property which cannot be found", column.getKey()));
             }
@@ -123,18 +127,39 @@ public abstract class FileBuilder<T> {
             LoggerFactory.getLogger(this.getClass()).error("Unable to get filter from DataCommunicator");
         }
 
-        Query streamQuery = new Query(0, grid.getDataProvider().size(new Query(filter)), grid.getDataCommunicator().getBackEndSorting(),
-                grid.getDataCommunicator().getInMemorySorting(), null);
-        Stream<T> dataStream = getDataStream(streamQuery);
+        DataProvider<T, ?> dataProvider = grid.getDataProvider();
+        Query<T, ?> streamQuery;
+        Stream<T> dataStream;
 
-        dataStream.forEach(t -> {
-            buildRow(t);
-        });
+        if (!(dataProvider instanceof HierarchicalDataProvider)) {
+            streamQuery = new Query<>(
+                    0,
+                    dataProvider.size(new Query(filter)),
+                    grid.getDataCommunicator().getBackEndSorting(),
+                    grid.getDataCommunicator().getInMemorySorting(),
+                    null
+            );
+
+            dataStream = getDataStream(streamQuery);
+            dataStream.forEach(item -> { buildRow(item, true);});
+        } else {
+            HierarchicalDataProvider<T, ?> hierarchicalDataProvider = (HierarchicalDataProvider<T, ?>) dataProvider;
+            hierarchicalDataProvider.fetch(new HierarchicalQuery(filter, null)).forEach(parent -> {
+                buildRow((T)parent, true);
+                hierarchicalDataProvider.fetch(new HierarchicalQuery(null, (T)parent)).forEach(child -> {
+                    onNewRow();
+                    addEmptyCell();
+                    buildRow((T)child, false);
+                });
+            });
+        }
     }
 
     @SuppressWarnings("unchecked")
-    private void buildRow(T item) {
-        onNewRow();
+    private void buildRow(T item, boolean addNewRow) {
+        if (addNewRow) {
+            onNewRow();
+        }
         if (propertySet == null) {
             propertySet = (PropertySet<T>) BeanPropertySet.get(item.getClass());
             columns = columns.stream().filter(this::isExportable).collect(Collectors.toList());
@@ -158,6 +183,8 @@ public abstract class FileBuilder<T> {
     void onNewCell() {
 
     }
+
+    abstract void addEmptyCell();
 
     abstract void buildCell(Object value);
 

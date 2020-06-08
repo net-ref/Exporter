@@ -6,6 +6,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.slf4j.LoggerFactory;
 
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.util.Calendar;
 import java.util.Map;
 
@@ -49,6 +50,13 @@ public class ExcelFileBuilder<T> extends FileBuilder<T> {
     protected void onNewCell() {
         cell = row.createCell(colNr);
         colNr++;
+    }
+
+    @Override
+    protected void addEmptyCell() {
+        onNewCell();
+
+        cell.setCellType(Cell.CELL_TYPE_BLANK);
     }
 
     @Override
