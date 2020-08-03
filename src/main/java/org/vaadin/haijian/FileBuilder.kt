@@ -5,9 +5,11 @@ import com.vaadin.flow.data.binder.BeanPropertySet
 import com.vaadin.flow.data.binder.PropertySet
 import com.vaadin.flow.data.provider.DataCommunicator
 import com.vaadin.flow.data.provider.DataProvider
+import com.vaadin.flow.data.provider.KeyMapper
 import com.vaadin.flow.data.provider.Query
 import com.vaadin.flow.data.provider.hierarchy.HierarchicalDataProvider
 import com.vaadin.flow.data.provider.hierarchy.HierarchicalQuery
+import com.vaadin.flow.data.renderer.TextRenderer
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.FileInputStream
@@ -149,16 +151,23 @@ abstract class FileBuilder<T: Any> internal constructor(private val grid: Grid<T
 
         if (propertySet == null) {
             propertySet = BeanPropertySet.get(item::class.java) as PropertySet<T>
-            columns = columns.stream().filter { column: Grid.Column<T> -> isExportable(column) }.collect(Collectors.toList())
+            columns = columns.stream().filter { column: Grid.Column<T> -> isExportable(column) || column.renderer is TextRenderer<T> }.collect(Collectors.toList())
         }
 
-        columns.forEach(Consumer { column: Grid.Column<*> ->
+        columns.forEach(Consumer { column: Grid.Column<T> ->
             val propertyDefinition = propertySet!!.getProperty(column.key)
-            if (propertyDefinition.isPresent) {
-                onNewCell()
-                buildCell(propertyDefinition.get().getter.apply(item))
-            } else {
-                throw ExporterException("Column key: " + column.key + " is a property which cannot be found")
+            when {
+                propertyDefinition.isPresent -> {
+                    onNewCell()
+                    buildCell(propertyDefinition.get().getter.apply(item))
+                }
+                column.renderer is TextRenderer<T> -> {
+                    onNewCell()
+                    buildCell((column.renderer as TextRenderer<T>).createComponent(item).element.text)
+                }
+                else -> {
+                    throw ExporterException("Column key: " + column.key + " is a property which cannot be found")
+                }
             }
         })
     }
